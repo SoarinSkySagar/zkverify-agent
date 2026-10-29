@@ -1,0 +1,27 @@
+{
+  "_comment": "Sample Proof Gatekeeper inputs, one per trap type from /events/proof-gatekeeper plus boundary cases. task_id, proof_tx, issued_at and deadline_at are filled in at send time. `reuseOf` reuses another case's proof_tx. `expect.outcome` is the internal outcome (src/decision.ts); the wire reason_code depends on REASON_CODES.",
+  "base": {
+    "registered_vk": "0x7d3a5c1e9b0f42d68a7e13c5b9f0d2e4a6c8b1d3f5e7092a4c6e8b0d2f4a6f291",
+    "proof_vk": "0x7d3a5c1e9b0f42d68a7e13c5b9f0d2e4a6c8b1d3f5e7092a4c6e8b0d2f4a6f291",
+    "minimum": "1000",
+    "public_balance": "1460",
+    "expiry_block": 19842201,
+    "current_block": 19832000,
+    "recipient": "0xDe42aB0c9f3E5d7A1b2C4e6F8091a3B5c7D99f01",
+    "condition_recipient": "0xde42ab0c9f3e5d7a1b2c4e6f8091a3b5c7d99f01",
+    "amount": "500",
+    "max_transfer": "1000"
+  },
+  "cases": [
+    { "name": "valid-condition", "patch": {}, "expect": { "decision": "APPROVE", "outcome": "VALID" } },
+    { "name": "vk-substitution", "patch": { "proof_vk": "0xa4c1e0b7d2f3c4a5968778695a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8fb8ff" }, "expect": { "decision": "REJECT", "outcome": "VK_MISMATCH" } },
+    { "name": "threshold-mismatch", "patch": { "public_balance": "999" }, "expect": { "decision": "REJECT", "outcome": "THRESHOLD" } },
+    { "name": "proof-reused", "reuseOf": "valid-condition", "patch": {}, "expect": { "decision": "REJECT", "outcome": "REPLAY" } },
+    { "name": "expired-condition", "patch": { "current_block": 19842201 }, "expect": { "decision": "REJECT", "outcome": "EXPIRED" } },
+    { "name": "recipient-mismatch", "patch": { "condition_recipient": "0xDe42aB0c9f3E5d7A1b2C4e6F8091a3B5c7D99f02" }, "expect": { "decision": "REJECT", "outcome": "RECIPIENT" } },
+    { "name": "amount-overflow", "patch": { "amount": "1001" }, "expect": { "decision": "REJECT", "outcome": "AMOUNT" } },
+    { "name": "boundary-balance-equals-minimum", "patch": { "public_balance": "1000" }, "expect": { "decision": "APPROVE", "outcome": "VALID" } },
+    { "name": "boundary-amount-equals-cap", "patch": { "amount": "1000" }, "expect": { "decision": "APPROVE", "outcome": "VALID" } },
+    { "name": "boundary-one-block-before-expiry", "patch": { "current_block": 19842200 }, "expect": { "decision": "APPROVE", "outcome": "VALID" } }
+  ]
+}

@@ -1,0 +1,28 @@
+# Public HTTPS front for the agent. Caddy obtains and renews the certificate for {$DOMAIN}
+# automatically and redirects HTTP to HTTPS.
+#   DOMAIN      e.g. yourname.duckdns.org
+#   AGENT_PATH  the registered handler path (default /agent)
+#   UPSTREAM    agent:8080 under docker-compose, 127.0.0.1:8080 under systemd
+{$DOMAIN} {
+	# The platform's HMAC covers the exact request/response bytes: no compression, no rewriting.
+	request_body {
+		max_size 256KB
+	}
+
+	@agent path {$AGENT_PATH:/agent} /healthz
+	handle @agent {
+		reverse_proxy {$UPSTREAM:127.0.0.1:8080} {
+			transport http {
+				dial_timeout 5s
+				# Above the platform's 60 s task deadline.
+				response_header_timeout 75s
+				read_timeout 75s
+				write_timeout 75s
+			}
+		}
+	}
+
+	handle {
+		respond 404
+	}
+}

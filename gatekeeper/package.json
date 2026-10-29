@@ -1,0 +1,27 @@
+{
+  "name": "proof-gatekeeper-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "zkVerify Agent Games — Proof Gatekeeper agent (HMAC-authenticated HTTPS endpoint, deterministic decisions, Groth16 proofs).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/src/server.js",
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
+    "replay": "node --env-file-if-exists=.env --import tsx scripts/replay.ts",
+    "register-vk": "node --env-file-if-exists=.env --import tsx scripts/register-vk.ts"
+  },
+  "dependencies": {
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,32 @@
+You are helping me build an AI agent for "Steal the VFY", a tournament event in the zkVerify Agent Games. Build a production-ready HTTP service in TypeScript (Node.js).
+
+HOW THE GAME WORKS:
+- The platform NEVER runs my code. My agent is a public HTTPS endpoint the platform POSTs signed turn envelopes to.
+- It is a 1v1 Swiss tournament. Each match is 20 simultaneous turns, both agents start at 100 VFY, highest balance at the end wins. Each turn I pick ONE action: HOLD, FORTIFY (cost 2, blocks up to 6 incoming extraction), or EXTRACT N (steal up to N<=10; a fortified opponent cuts my gain by 6).
+- Each turn I return my action AND a Groth16 proof (snarkjs) that the action is the output of my PRE-COMMITTED strategy for the given game state. The platform re-verifies the proof offline and independently recomputes the public-inputs hash — any divergence is rejected and scored as HOLD. The circuit is the referee; I cannot deviate from my committed strategy mid-match.
+- Before Swiss Round 1 I must register a strategy COMMITMENT (a Poseidon hash of my strategy params + salt) from the dashboard. It is frozen when matches are paired.
+
+>>> THE STRATEGY IS MINE — DO NOT WRITE IT FOR ME <<<
+- Leave my strategy parameters as a clearly-marked TODO constant (e.g. STRATEGY_PARAMS) with a comment. DO NOT invent, suggest, or hardcode a "good" strategy, a heuristic, or specific parameter values. Build the harness that PROVES whatever strategy I later fill in; the competitive decision is mine. Fill it in only if I explicitly give you values.
+
+AUTHORITATIVE SPEC — DO NOT INVENT PROTOCOL DETAILS:
+- Read https://agentgames.zkverify.io/build — the Steal the VFY section: turn envelope + response schema, the publicInputsHash computation with its EXACT field order, the actions, and the common-mistakes list. Source of truth.
+- Read https://agentgames.zkverify.io/guide for registration and how to register the strategy commitment.
+- Download vfy-policy.wasm and vfy-policy_final.zkey from the /build artifacts section.
+
+WHAT TO BUILD:
+1. HTTPS POST handler + HMAC verification over the RAW body against x-agent-games-signature before parsing. Reject on mismatch.
+2. A pure, deterministic policy function action = policy(state, STRATEGY_PARAMS). It must match my circuit exactly, so keep it isolated and well-tested. (Leave STRATEGY_PARAMS as a TODO per the rule above.)
+3. Correct public-inputs hash computation per the /build spec (exact field order, 32-byte big-endian packing). Compute it BEFORE submitting to zkVerify.
+4. Local Groth16 proof generation (snarkjs, downloaded wasm/zkey) and zkVerify submission (Kurier or zkVerifyJS), awaiting Finalized.
+5. A signed response echoing matchId + turn: { action, policyProof: { circuitVersion, proofReference, publicInputsHash }, proof, public_signals, idempotencyKey } with a valid x-agent-games-signature. Omit action.amount entirely for HOLD / FORTIFY.
+6. A script to compute and print my commitment hash (Poseidon of params + salt) so I can register it — WITHOUT printing the salt or params.
+7. A local test harness, plus an .env.example.
+
+SECURITY — NON-NEGOTIABLE:
+- NEVER paste a private key, wallet seed, strategy salt, or API key into this chat; never hardcode or commit them. Env vars only: AGENT_GAMES_HMAC_SECRET, KURIER_API_KEY, wallet key, and STRATEGY_SALT. Add .env to .gitignore and ship a .env.example.
+- Fail closed: on timeout, error, or uncertainty within the turn deadline, default to HOLD — never crash into an invalid submission.
+- Keep my strategy params and salt secret: never log them, never put them in a model prompt, never commit them. My edge depends on them staying private until reveal.
+- Use testnet first.
+
+Ask for my language/hosting preferences, then outline the file structure and implement.

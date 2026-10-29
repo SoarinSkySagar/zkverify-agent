@@ -1,0 +1,58 @@
+# Run from gatekeeper/deploy/ after linking the env file once:  ln -s ../.env .env
+# (Compose reads deploy/.env to fill ${...} below; the agent reads ../.env via env_file.)
+#   docker compose up -d --build
+
+services:
+  agent:
+    build:
+      context: ..
+    image: proof-gatekeeper-agent:local
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # Fixed for the container layout; these override whatever .env says.
+      HOST: 0.0.0.0
+      PORT: "8080"
+      DATA_DIR: /app/data
+    volumes:
+      - gk-data:/app/data
+    # No `ports:`: reachable only by Caddy on the internal network.
+    networks: [internal]
+
+  caddy:
+    image: caddy:2.11.6
+    restart: unless-stopped
+    depends_on:
+      agent:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Only the values Caddy needs; it never sees the agent's secrets.
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      AGENT_PATH: ${AGENT_PATH:-/agent}
+      UPSTREAM: agent:8080
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [internal]
+
+  duckdns:
+    image: curlimages/curl:8.22.0
+    restart: unless-stopped
+    environment:
+      DUCKDNS_DOMAIN: ${DUCKDNS_DOMAIN:?set DUCKDNS_DOMAIN in .env}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:?set DUCKDNS_TOKEN in .env}
+    volumes:
+      - ./duckdns-update.sh:/duckdns-update.sh:ro
+    entrypoint: ["/bin/sh", "/duckdns-update.sh", "--loop"]
+
+volumes:
+  gk-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:

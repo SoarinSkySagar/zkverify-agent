@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+deploy
+test
+fixtures
+.env
+.env.*
+!.env.example
