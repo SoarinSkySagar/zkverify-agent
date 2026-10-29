@@ -7,16 +7,19 @@ import { KurierClient } from "./kurier.js";
 import { log } from "./log.js";
 import { Prover } from "./prover.js";
 import { Store } from "./store.js";
+import { STV_CIRCUIT } from "./stv/circuit.js";
+import { toHex32 } from "./stv/commitment.js";
+import { loadStrategy, StvHandler } from "./stv/handler.js";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
 export function createServer(handler: Handler, agentPath: string, hmacKey: Buffer): http.Server {
-  const send = (res: http.ServerResponse, status: number, body: string) => {
-    // Sign the exact bytes we send.
+  // Sign the exact bytes we send, with the key that authenticated the request (else the primary).
+  const send = (res: http.ServerResponse, status: number, body: string, key: Buffer = hmacKey) => {
     res.writeHead(status, {
       "content-type": "application/json",
       "content-length": Buffer.byteLength(body),
-      [SIGNATURE_HEADER]: sign(body, hmacKey),
+      [SIGNATURE_HEADER]: sign(body, key),
     });
     res.end(body);
   };
@@ -42,7 +45,7 @@ export function createServer(handler: Handler, agentPath: string, hmacKey: Buffe
       if (aborted) return;
       handler
         .handle(Buffer.concat(chunks), req.headers[SIGNATURE_HEADER])
-        .then((r) => send(res, r.status, r.body))
+        .then((r) => send(res, r.status, r.body, r.key))
         .catch(() => send(res, 500, JSON.stringify({ error: "internal error" })));
     });
   });
@@ -66,7 +69,18 @@ async function main(): Promise<void> {
   const prover = await Prover.load(config.wasmPath, config.zkeyPath);
   const store = new Store(config.dataDir);
   const kurier = config.kurier.apiKey ? new KurierClient(config.kurier.baseUrl, config.kurier.apiKey) : undefined;
-  const handler = new Handler({ config, prover, store, kurier, log, now: Date.now });
+
+  // Steal the VFY. A missing strategy doesn't stop the agent: turns then fail closed to HOLD.
+  const strategy = loadStrategy({ params: config.stv.strategyParamsRaw, salt: config.stv.strategySaltRaw });
+  const stvProver = await Prover.load(config.stv.wasmPath, config.stv.zkeyPath, STV_CIRCUIT);
+  if (strategy.ok) {
+    log("info", "steal-the-vfy enabled", { commitment: toHex32(strategy.commitment) });
+  } else {
+    log("warn", `steal-the-vfy: ${strategy.error} — turns will HOLD without a proof until this is fixed`);
+  }
+  const stv = new StvHandler({ config, prover: stvProver, strategy, store, kurier, log, now: Date.now });
+
+  const handler = new Handler({ config, prover, store, kurier, log, now: Date.now, stv });
 
   const server = createServer(handler, config.agentPath, config.hmacKey);
   server.listen(config.port, config.host, () => {

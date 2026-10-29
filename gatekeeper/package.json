@@ -2,7 +2,7 @@
   "name": "proof-gatekeeper-agent",
   "version": "1.0.0",
   "private": true,
-  "description": "zkVerify Agent Games — Proof Gatekeeper agent (HMAC-authenticated HTTPS endpoint, deterministic decisions, Groth16 proofs).",
+  "description": "zkVerify Agent Games agent: Proof Gatekeeper + Steal the VFY (HMAC-authenticated HTTPS endpoint, deterministic decisions, Groth16 proofs).",
   "type": "module",
   "engines": {
     "node": ">=22.9"
@@ -14,9 +14,14 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "replay": "node --env-file-if-exists=.env --import tsx scripts/replay.ts",
-    "register-vk": "node --env-file-if-exists=.env --import tsx scripts/register-vk.ts"
+    "register-vk": "node --env-file-if-exists=.env --import tsx scripts/register-vk.ts",
+    "replay:stv": "node --env-file-if-exists=.env --import tsx scripts/replay-stv.ts",
+    "stv:commitment": "node --env-file-if-exists=.env --import tsx scripts/stv-commitment.ts",
+    "stv:new-salt": "node --import tsx scripts/stv-new-salt.ts"
   },
   "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "poseidon-lite": "0.3.0",
     "snarkjs": "0.7.5"
   },
   "devDependencies": {

@@ -18,3 +18,8 @@ export function verify(rawBody: Buffer, header: string | string[] | undefined, k
   const expected = Buffer.from(sign(rawBody, key), "hex");
   return timingSafeEqual(expected, Buffer.from(provided, "hex"));
 }
+
+/** Returns the first key the signature verifies under, or undefined. */
+export function verifyAny(rawBody: Buffer, header: string | string[] | undefined, keys: readonly Buffer[]): Buffer | undefined {
+  return keys.find((k) => verify(rawBody, header, k));
+}

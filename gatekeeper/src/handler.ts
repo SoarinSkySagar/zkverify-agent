@@ -8,20 +8,27 @@ import type { CircuitInput } from "./encoding.js";
 import { randomSalt, toCircuitInput } from "./encoding.js";
 import type { GatekeeperTask } from "./envelope.js";
 import { parseEnvelope, parseTimestamp } from "./envelope.js";
-import { verify } from "./hmac.js";
+import { verifyAny } from "./hmac.js";
 import type { KurierClient } from "./kurier.js";
 import type { Logger } from "./log.js";
 import type { GeneratedProof } from "./prover.js";
 import type { CachedResponse, Store } from "./store.js";
+import { isTurnEnvelope } from "./stv/envelope.js";
+import type { StvHandler } from "./stv/handler.js";
 
 export interface Deps {
-  config: Pick<Config, "hmacKey" | "maxClockSkewMs" | "deadlineSafetyMs" | "hardDeadlineMs" | "reasonCodes" | "kurier">;
+  config: Pick<Config, "hmacKeys" | "maxClockSkewMs" | "deadlineSafetyMs" | "hardDeadlineMs" | "reasonCodes" | "kurier">;
   prover: { prove(input: CircuitInput): Promise<GeneratedProof> };
   store: Store;
   kurier: KurierClient | undefined;
   log: Logger;
   now: () => number;
+  /** Steal the VFY turns (eventId "steal-the-vfy") are routed here. */
+  stv?: StvHandler;
 }
+
+/** A response plus the HMAC key that authenticated its request (the response is signed with it). */
+export type HandlerResult = CachedResponse & { key?: Buffer };
 
 export interface GatekeeperResponse {
   decision: Decision;
@@ -54,18 +61,27 @@ export class Handler {
   constructor(private readonly deps: Deps) {}
 
   /** `rawBody` must be the exact bytes received; the signature is checked before parsing. */
-  async handle(rawBody: Buffer, signatureHeader: string | string[] | undefined): Promise<CachedResponse> {
+  async handle(rawBody: Buffer, signatureHeader: string | string[] | undefined): Promise<HandlerResult> {
     const receivedAt = this.deps.now();
-    if (!verify(rawBody, signatureHeader, this.deps.config.hmacKey)) {
+    const key = verifyAny(rawBody, signatureHeader, this.deps.config.hmacKeys);
+    if (!key) {
       this.deps.log("warn", "rejected request: bad signature");
       return json(401, { error: "invalid signature" });
     }
+    return { ...(await this.route(rawBody, receivedAt)), key };
+  }
 
+  private async route(rawBody: Buffer, receivedAt: number): Promise<CachedResponse> {
     let body: unknown;
     try {
       body = JSON.parse(rawBody.toString("utf8"));
     } catch {
       return json(400, { error: "invalid JSON" });
+    }
+
+    if (isTurnEnvelope(body)) {
+      if (!this.deps.stv) return json(400, { error: "steal-the-vfy is not enabled on this agent" });
+      return this.deps.stv.handle(body, receivedAt);
     }
 
     const parsed = parseEnvelope(body);

@@ -16,12 +16,12 @@ import { buildEnvelopes } from "../scripts/fixtures.js";
 
 const hmacKey = Buffer.from("handler-test-key-not-a-real-secret-0123", "utf8");
 const config: Deps["config"] = {
-  hmacKey,
+  hmacKeys: [hmacKey],
   maxClockSkewMs: 120_000,
   deadlineSafetyMs: 5_000,
   hardDeadlineMs: 60_000,
   reasonCodes: "trap",
-  kurier: { mode: "off", network: "testnet", baseUrl: "", apiKey: "", vkHash: "" },
+  kurier: { mode: "off", network: "testnet", baseUrl: "", apiKey: "", vkHash: "", vkHashStv: "" },
 };
 
 let dataDir: string;

@@ -10,8 +10,10 @@ export interface Config {
   port: number;
   agentPath: string;
   dataDir: string;
-  /** HMAC key bytes. Never log this. */
+  /** Primary HMAC key bytes. Never log this. */
   hmacKey: Buffer;
+  /** All accepted keys: primary first, then AGENT_GAMES_HMAC_SECRET_STV if set. A response is signed with the key that verified its request. */
+  hmacKeys: Buffer[];
   maxClockSkewMs: number;
   deadlineSafetyMs: number;
   /** Hard response deadline from the spec (60 s). */
@@ -26,12 +28,28 @@ export interface Config {
     /** Never log this — Kurier puts it in the URL path. */
     apiKey: string;
     vkHash: string;
+    vkHashStv: string;
+  };
+  stv: {
+    wasmPath: string;
+    zkeyPath: string;
+    /** Raw STRATEGY_PARAMS / STRATEGY_SALT. Parsed by src/stv; never log these. */
+    strategyParamsRaw: string | undefined;
+    strategySaltRaw: string | undefined;
+    /** Used when a turn envelope has no deadlineAt ("~30 s to respond / turn"). */
+    defaultTurnWindowMs: number;
+    deadlineSafetyMs: number;
+    /** Where proof + public_signals go in the response; see CLAUDE.md §10. */
+    proofPlacement: "top" | "policyProof";
   };
 }
 
 /** Gatekeeper vk_hash registered on zkVerify mainnet (from /build and /api/circuit-info). */
 export const MAINNET_GATEKEEPER_VK_HASH =
   "0x6b79c6012a6d8651f3e13bc4d2a20370280ab49700c90c5316d4168bfbad77b0";
+/** Steal the VFY (vfy-policy) vk_hash registered on zkVerify mainnet. */
+export const MAINNET_STV_VK_HASH =
+  "0x6c56509f1c56fd1fd4e9737f906d2220f4b95f1d507f1adf6899085bd74be047";
 
 const KURIER_URLS: Record<KurierNetwork, string> = {
   testnet: "https://api-testnet.kurier.xyz/api/v1",
@@ -91,20 +109,45 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (!vkHash) throw new ConfigError("KURIER_VK_HASH is required on testnet — run `npm run register-vk` first");
   }
 
+  let vkHashStv = (env.KURIER_VK_HASH_STV ?? "").trim();
+  if (!vkHashStv && network === "mainnet") vkHashStv = MAINNET_STV_VK_HASH;
+
   const circuitsDir = path.resolve(env.CIRCUITS_DIR ?? "circuits");
+
+  // Optional second secret, for when Steal the VFY is registered as a separate agent pointing
+  // at the same URL. Same encoding as the primary.
+  const hmacKey = decodeHmacKey(secret, encoding);
+  const hmacKeys = [hmacKey];
+  const secretStv = (env.AGENT_GAMES_HMAC_SECRET_STV ?? "").trim();
+  if (secretStv) {
+    if (PLACEHOLDER_SECRETS.has(secretStv.toLowerCase()) || secretStv.length < 16) {
+      throw new ConfigError("AGENT_GAMES_HMAC_SECRET_STV looks like a placeholder — set it from that agent's 'Rotate Secret', or leave it empty");
+    }
+    hmacKeys.push(decodeHmacKey(secretStv, encoding));
+  }
 
   return {
     host: (env.HOST ?? "").trim() || "0.0.0.0",
     port: int("PORT", env.PORT, 8080),
     agentPath,
     dataDir: path.resolve(env.DATA_DIR ?? "data"),
-    hmacKey: decodeHmacKey(secret, encoding),
+    hmacKey,
+    hmacKeys,
     maxClockSkewMs: int("MAX_CLOCK_SKEW_SECONDS", env.MAX_CLOCK_SKEW_SECONDS, 120) * 1000,
     deadlineSafetyMs: int("DEADLINE_SAFETY_MS", env.DEADLINE_SAFETY_MS, 5000),
     hardDeadlineMs: 60_000,
     reasonCodes: oneOf("REASON_CODES", env.REASON_CODES, ["trap", "canonical"] as const, "trap"),
     wasmPath: path.join(circuitsDir, "gatekeeper.wasm"),
     zkeyPath: path.join(circuitsDir, "gatekeeper_final.zkey"),
-    kurier: { mode, network, baseUrl: KURIER_URLS[network], apiKey, vkHash },
+    kurier: { mode, network, baseUrl: KURIER_URLS[network], apiKey, vkHash, vkHashStv },
+    stv: {
+      wasmPath: path.join(circuitsDir, "vfy-policy.wasm"),
+      zkeyPath: path.join(circuitsDir, "vfy-policy_final.zkey"),
+      strategyParamsRaw: env.STRATEGY_PARAMS,
+      strategySaltRaw: env.STRATEGY_SALT,
+      defaultTurnWindowMs: 30_000,
+      deadlineSafetyMs: int("STV_DEADLINE_SAFETY_MS", env.STV_DEADLINE_SAFETY_MS, 3000),
+      proofPlacement: oneOf("STV_PROOF_PLACEMENT", env.STV_PROOF_PLACEMENT, ["top", "policyProof"] as const, "top"),
+    },
   };
 }

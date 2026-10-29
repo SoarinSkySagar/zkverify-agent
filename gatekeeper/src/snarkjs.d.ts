@@ -21,6 +21,9 @@ declare module "snarkjs" {
     ): Promise<{ proof: Groth16Proof; publicSignals: string[] }>;
     verify(vk: VerificationKey, publicSignals: string[], proof: Groth16Proof): Promise<boolean>;
   };
+  export const wtns: {
+    calculate(input: Record<string, string | string[]>, wasm: string | Uint8Array, out: { type: "mem"; data?: Uint8Array }): Promise<void>;
+  };
   export const zKey: {
     exportVerificationKey(zkey: string | Uint8Array): Promise<VerificationKey>;
   };
